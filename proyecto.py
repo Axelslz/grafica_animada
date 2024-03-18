@@ -1,100 +1,93 @@
-import tkinter as tk
-from tkinter import ttk, simpledialog
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-from matplotlib.animation import FuncAnimation
-from moviepy.editor import concatenate_videoclips, VideoFileClip
+import matplotlib.pyplot as plt
+import os
+from moviepy.editor import ImageSequenceClip, concatenate_videoclips, VideoFileClip
+import tkinter as tk
+from tkinter import ttk
 
-# Funciones matemáticas
-def sin_function(x):
-    return np.sin(x)
+# Definición de las funciones trigonométricas
+def sin_function(x, phase=0):
+    return np.sin(x + phase)
 
-def cos_function(x):
-    return np.cos(x)
+def cos_function(x, phase=0):
+    return np.cos(x + phase)
 
-def exp_function(x):
-    return np.exp(x)
+def tan_function(x, phase=0):
+    return np.tan(x + phase)
 
-def log_function(x):
-    return np.log(x)
+def exp_function(x, phase=0):
+    return np.exp(x + phase)
 
-def tan_function(x):
-    return np.tan(x)
+def log_function(x, phase=0):
+    return np.log(x + phase)
 
-# Diccionario de funciones
-functions_dict = {
+# Actualización del diccionario de funciones
+funciones = {
     "Sin": sin_function,
     "Cos": cos_function,
+    "Tan": tan_function,
     "Exp": exp_function,
-    "Log": log_function,
-    "Tan": tan_function
+    "Log": log_function
 }
 
-# Función para animar una función matemática
-def animar_funcion(func, lower_limit, upper_limit, filename):
-    fig, ax = plt.subplots()
-    x = np.linspace(lower_limit, upper_limit, 300)
-    y = func(x)
-    line, = ax.plot(x, y, 'b-')
+# Función para guardar los frames de la animación
+def guardar_frames(funcion, x_min, x_max, folder, texto):
+    x = np.linspace(x_min, x_max, 400)
+    num_frames = 60
 
-    duration = upper_limit - lower_limit
-    frames = int(60 * duration)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
-    def update(frame):
-        line.set_ydata(func(x + frame / 10.0))
-        return line,
+    for i in range(num_frames):
+        phase_shift = 2 * np.pi * i / num_frames
+        y = funcion(x, phase_shift)
+        plt.figure(figsize=(8, 6))
+        plt.plot(x, y)
+        plt.xlim([x_min, x_max])
+        plt.ylim([-10, 10])
+        plt.text(0.5, 0.9, texto, horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes)
+        plt.savefig(f"{folder}/{i}.png")
+        plt.close()
 
-    ani = FuncAnimation(fig, update, frames=frames, interval=50, blit=True)
-    ani.save(filename, writer='ffmpeg', fps=60, codec='libx264')
-    plt.close(fig)
+# Función para combinar los videos
+def combinar_videos():
+    video_clips = []
+    for funcion in funciones.keys():
+        folder = f"{funcion}_frames"
+        if os.path.exists(folder):
+            frames = [f"{folder}/{i}.png" for i in range(60)]
+            clip = ImageSequenceClip(frames, fps=10)
+            clip.write_videofile(f"{funcion}.mp4")
+            video_clips.append(f"{funcion}.mp4")
 
-# Función para combinar videos
-def combine_videos(video_filenames, output_filename):
-    clips = [VideoFileClip(filename) for filename in video_filenames]
-    combined_clip = concatenate_videoclips(clips, method="compose")
-    combined_clip.write_videofile(output_filename)
+    if video_clips:
+        final_clip = concatenate_videoclips([VideoFileClip(vc) for vc in video_clips])
+        final_clip.write_videofile("video_combinado.mp4")
 
-# Función ejecutada al presionar el botón de submit
+# Lógica principal para guardar los frames y combinar los videos
 def on_submit():
-    selected_indexes = list(map(int, function_listbox.curselection()))
-    selected_functions = [function_listbox.get(idx) for idx in selected_indexes]
-    ordered_functions = [(functions_dict[func_name], func_name) for _, func_name in sorted(zip(selected_indexes, selected_functions))]
-    
+    selected_function = function_listbox.get(function_listbox.curselection())
     lower_limit = float(lower_limit_entry.get())
     upper_limit = float(upper_limit_entry.get())
 
-    video_filenames = []
-
-    for _, func_name in ordered_functions:
-        video_filename = f"{func_name}_animation.mp4"
-        func = functions_dict[func_name]
-        animar_funcion(func, lower_limit, upper_limit, video_filename)
-        video_filenames.append(video_filename)
-
-    if len(video_filenames) > 1:
-        combined_filename = "combined_video.mp4"
-        combine_videos(video_filenames, combined_filename)
-        print(f"Video combinado creado: {combined_filename}")
-    else:
-        print("Videos individuales creados.")
+    funcion = funciones[selected_function]
+    guardar_frames(funcion, lower_limit, upper_limit, f"{selected_function}_frames", selected_function)
+    combinar_videos()
 
 # Interfaz gráfica
 root = tk.Tk()
-root.title("Graficador de Funciones y Generador de Videos")
+root.title("Generador y Combinador de Videos")
 
 main_frame = ttk.Frame(root)
 main_frame.pack(padx=10, pady=10, fill='x', expand=True)
 
-# Selector de funciones con orden
-function_label = ttk.Label(main_frame, text="Seleccione una función y defina un orden:")
+function_label = ttk.Label(main_frame, text="Seleccione una función:")
 function_label.pack(fill='x', expand=True)
-function_listbox = tk.Listbox(main_frame, selectmode='multiple', exportselection=0)
-for function in functions_dict:
+function_listbox = tk.Listbox(main_frame, selectmode='single', exportselection=0)
+for function in funciones:
     function_listbox.insert(tk.END, function)
 function_listbox.pack(fill='x', expand=True)
 
-# Entradas para los límites de x
 limites_frame = ttk.Frame(main_frame)
 limites_frame.pack(fill='x', expand=True)
 
@@ -108,9 +101,10 @@ limite_superior_label.pack(side='left')
 upper_limit_entry = ttk.Entry(limites_frame)
 upper_limit_entry.pack(side='left')
 
-# Botón para generar los videos
 submit_button = ttk.Button(main_frame, text="Generar y combinar videos", command=on_submit)
 submit_button.pack(fill='x', expand=True, pady=5)
 
 root.mainloop()
+
+
 
